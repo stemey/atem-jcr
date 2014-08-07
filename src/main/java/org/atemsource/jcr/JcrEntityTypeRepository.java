@@ -7,6 +7,7 @@
  ******************************************************************************/
 package org.atemsource.jcr;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,6 +18,7 @@ import org.atemsource.atem.api.EntityTypeRepository;
 import org.atemsource.atem.api.infrastructure.exception.TechnicalException;
 import org.atemsource.atem.api.type.EntityType;
 import org.atemsource.atem.api.type.EntityTypeBuilder;
+import org.atemsource.atem.api.type.IncomingRelation;
 import org.atemsource.atem.impl.common.AbstractEntityType;
 import org.atemsource.atem.impl.common.AbstractEntityTypeBuilder.EntityTypeBuilderCallback;
 import org.atemsource.atem.impl.common.AbstractMetaDataRepository;
@@ -39,6 +41,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 		implements DynamicEntityTypeSubrepository<Node>,
 		EntityTypeBuilderCallback {
+	public class ReplaceCallback implements EntityTypeBuilderCallback {
+
+		@Override
+		public void onFinished(AbstractEntityType<?> entityType) {
+			JcrEntityTypeRepository.this.onReplaced((JcrEntityType) entityType);
+		}
+
+	}
+
 	@Autowired
 	private BeanLocator beanLocator;
 	
@@ -65,8 +76,15 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 
 	@Override
 	public EntityTypeBuilder createBuilder(String code) {
-		JcrEntityTypeBuilder builder = beanLocator.getInstance(JcrEntityTypeBuilder.class);
 		JcrEntityType entityType = createEntityType(code);
+		JcrEntityTypeBuilder builder = createBuilder(entityType);
+		
+		
+		return builder;
+	}
+
+	private JcrEntityTypeBuilder createBuilder(JcrEntityType entityType) {
+		JcrEntityTypeBuilder builder = beanLocator.getInstance(JcrEntityTypeBuilder.class);
 		try {
 			PrimitiveAttributeImpl<String> pathAttribute = new PrimitiveAttributeImpl<String>();
 			pathAttribute.setAccessor(new PojoAccessor(Node.class.getMethod("getPath", new Class[0])));
@@ -99,9 +117,45 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 		builder.setConverterMap(converterMap);
 		
 		builder.addSingleAttribute(getTypeProperty(), String.class);
-		
-		
 		return builder;
+	}
+	
+	public EntityTypeBuilder replaceBuilder(String code) {
+		final JcrEntityType dynamicEntityTypeImpl = beanLocator
+				.getInstance(JcrEntityType.class);
+		dynamicEntityTypeImpl.setTypeCodeConverter(typeCodeConverter);
+		dynamicEntityTypeImpl.setCode(code);
+		dynamicEntityTypeImpl.setTypeProperty(typeProperty);
+		
+		JcrEntityTypeBuilder builder = createBuilder(dynamicEntityTypeImpl);
+		
+		builder.setRepositoryCallback(new ReplaceCallback());
+
+		return builder;
+	}
+
+	public void onReplaced(JcrEntityType entityType) {
+		AbstractEntityType<Node> previousType = nameToEntityTypes.get(entityType.getCode());
+		
+		Collection<IncomingRelation> incomingAssociations = previousType.getIncomingAssociations();
+		
+		((AbstractEntityType) previousType)
+		.removeOutgoingAssociations(previousType);
+		
+		
+		
+		this.nameToEntityTypes.put(entityType.getCode(), entityType);
+		entityTypes.add(entityType);
+		entityType.setMetaType((EntityType) entityTypeCreationContext
+				.getEntityTypeReference(EntityType.class));
+		attacheServicesToEntityType(entityType);
+		((AbstractEntityType) entityType)
+				.initializeIncomingAssociations(entityTypeCreationContext);
+		
+		for (IncomingRelation<?,?> incomingRelation:incomingAssociations) {
+		entityType.addIncomingAssociation(incomingRelation);
+		}
+		entityTypeCreationContext.lazilyInitialized(entityType);
 	}
 
 	public JcrEntityType createEntityType(String code) {
@@ -117,6 +171,7 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 		}
 		this.nameToEntityTypes.put(code, dynamicEntityTypeImpl);
 		entityTypes.add(dynamicEntityTypeImpl);
+		
 		return dynamicEntityTypeImpl;
 	}
 
@@ -151,7 +206,7 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 	}
 
 	@Override
-	public void onFinished(AbstractEntityType<?> entityType) {
+	public void onFinished(AbstractEntityType entityType) {
 		entityType.setMetaType((EntityType) entityTypeCreationContext
 				.getEntityTypeReference(EntityType.class));
 		attacheServicesToEntityType(entityType);
@@ -167,4 +222,8 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 	public void setTypeProperty(String typeProperty) {
 		this.typeProperty = typeProperty;
 	}
+	
+	
+	
+
 }

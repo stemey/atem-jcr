@@ -2,44 +2,50 @@ package org.atemsource.jcr.entitytype;
 
 import javax.jcr.Node;
 
+import org.atemsource.atem.api.EntityTypeRepository;
 import org.atemsource.atem.api.attribute.annotation.Cardinality;
 import org.atemsource.atem.api.attribute.relation.SingleAttribute;
 import org.atemsource.atem.api.type.EntityType;
-import org.atemsource.atem.api.type.SingleAttributeBuilder;
+import org.atemsource.atem.api.type.SingleAssociationAttributeBuilder;
 import org.atemsource.atem.api.type.Type;
 import org.atemsource.atem.impl.common.AbstractEntityType;
 import org.atemsource.jcr.entitytype.converter.StringConverter;
 
 public class JcrSingleAssociationAttributeBuilder<T> implements
-		SingleAttributeBuilder<T> {
+		SingleAssociationAttributeBuilder<T> {
 
 	private String code;
 	private AbstractEntityType<?> entityType;
-	public JcrSingleAssociationAttributeBuilder(String code,AbstractEntityType<?> entityType) {
+
+	public JcrSingleAssociationAttributeBuilder(String code,
+			AbstractEntityType<?> entityType, EntityTypeRepository entityTypeRepository) {
 		super();
 		this.code = code;
-		this.entityType=entityType;
+		this.entityType = entityType;
+		this.entityTypeRepository=entityTypeRepository;
 	}
 
-	private EntityType<T> targetType;
+	private Type<T> targetType;
 	private boolean composition;
 	private Cardinality cardinality;
-	
+	private EntityTypeRepository entityTypeRepository;
+	private boolean required;
+
 	@Override
-	public SingleAttributeBuilder<T> type(EntityType<T> targetType) {
-		this.targetType=targetType;
+	public SingleAssociationAttributeBuilder<T> type(Type<T> targetType) {
+		this.targetType = targetType;
 		return this;
 	}
 
 	@Override
-	public SingleAttributeBuilder<T> cardinality(Cardinality cardinality) {
-		this.cardinality=cardinality;
+	public SingleAssociationAttributeBuilder<T> cardinality(Cardinality cardinality) {
+		this.cardinality = cardinality;
 		return this;
 	}
 
 	@Override
-	public SingleAttributeBuilder<T> composition(boolean composition) {
-		this.composition=composition;
+	public SingleAssociationAttributeBuilder<T> composition(boolean composition) {
+		this.composition = composition;
 		return this;
 	}
 
@@ -47,33 +53,49 @@ public class JcrSingleAssociationAttributeBuilder<T> implements
 	public SingleAttribute<T> create() {
 		if (composition) {
 			SingleNodeAttribute singleNodeAttribute = new SingleNodeAttribute();
+			singleNodeAttribute.setRequired(required);
 			singleNodeAttribute.setCode(code);
 			singleNodeAttribute.setComposition(true);
-			if (cardinality!=null) {
+			if (cardinality != null) {
 				singleNodeAttribute.setTargetCardinality(cardinality);
-			}else{
+			} else {
 				singleNodeAttribute.setTargetCardinality(Cardinality.ONE);
 			}
 			singleNodeAttribute.setTargetType((Type<Node>) targetType);
 			singleNodeAttribute.setEntityType(entityType);
 			entityType.addAttribute(singleNodeAttribute);
 			return (SingleAttribute<T>) singleNodeAttribute;
-		}else {
+		} else {
 			JcrPrimitiveAttribute<String> attribute = new JcrPrimitiveAttribute<String>();
+			attribute.setRequired(required);
 			attribute.setCode(code);
-			if (cardinality!=null) {
+			if (cardinality != null) {
 				attribute.setTargetCardinality(cardinality);
-			}else{
+			} else {
 				attribute.setTargetCardinality(Cardinality.ONE);
 			}
 			attribute.setValueConverter(new StringConverter());
-			JcrRefType refType = new JcrRefType(targetType);
+			JcrRefType refType = new JcrRefType((EntityType<T>)targetType,
+					entityTypeRepository);
 			attribute.setTargetType(refType);
 			attribute.setEntityType(entityType);
 			entityType.addAttribute(attribute);
 			return (SingleAttribute<T>) attribute;
-			
+
 		}
+	}
+
+	@Override
+	public JcrSingleAssociationAttributeBuilder<T> required(boolean required) {
+		this.required=required;
+		return this;
+	}
+
+
+	@Override
+	public JcrSingleAssociationAttributeBuilder<T> type(Class<T> javaType) {
+		this.targetType=entityTypeRepository.getType(javaType);
+		return this;
 	}
 
 }

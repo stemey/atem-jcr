@@ -1,5 +1,6 @@
 package org.atemsource.jcr.service;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.LinkedList;
@@ -17,7 +18,6 @@ import javax.jcr.UnsupportedRepositoryOperationException;
 import javax.jcr.Value;
 import javax.jcr.nodetype.NodeType;
 import javax.jcr.query.InvalidQueryException;
-import javax.jcr.query.QueryManager;
 import javax.jcr.query.QueryResult;
 import javax.jcr.query.qom.Comparison;
 import javax.jcr.query.qom.Constraint;
@@ -25,6 +25,8 @@ import javax.jcr.query.qom.Ordering;
 import javax.jcr.query.qom.QueryObjectModel;
 import javax.jcr.query.qom.QueryObjectModelFactory;
 import javax.jcr.query.qom.Selector;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 import org.apache.jackrabbit.commons.JcrUtils;
 import org.atemsource.atem.api.attribute.Attribute;
@@ -39,10 +41,10 @@ import org.atemsource.atem.api.service.InsertionService;
 import org.atemsource.atem.api.service.SingleAttributeQuery;
 import org.atemsource.atem.api.type.EntityType;
 import org.atemsource.atem.api.type.Type;
-import org.atemsource.atem.api.type.primitive.RefType;
 import org.atemsource.atem.service.entity.EntityRestService.Result;
 import org.atemsource.atem.service.entity.FindByIdService;
 import org.atemsource.atem.service.entity.FindByTypeService;
+import org.atemsource.atem.service.entity.GetCollectionService;
 import org.atemsource.atem.service.entity.ListCallback;
 import org.atemsource.atem.service.entity.ReturnErrorObject;
 import org.atemsource.atem.service.entity.SingleCallback;
@@ -54,10 +56,12 @@ import org.atemsource.atem.service.entity.search.Operator;
 import org.atemsource.atem.service.entity.search.Paging;
 import org.atemsource.atem.service.entity.search.Query;
 import org.atemsource.atem.service.entity.search.Sorting;
+import org.atemsource.atem.service.refresolver.CollectionResource;
 import org.atemsource.atem.utility.transform.api.meta.DerivedType;
 import org.atemsource.atem.utility.transform.service.CreationService;
 import org.atemsource.jcr.entitytype.JcrEntityType;
 import org.atemsource.jcr.entitytype.JcrRefType;
+import org.codehaus.jackson.node.ObjectNode;
 
 /**
  * 
@@ -72,7 +76,13 @@ import org.atemsource.jcr.entitytype.JcrRefType;
  */
 public class JcrCrudService implements InsertionService, StatefulUpdateService,
 		CreationService<Node, Object>, FindByIdService, FindByTypeService,
-		DeletionService,IdentityAttributeService, FindByAttributeService {
+		DeletionService, IdentityAttributeService, FindByAttributeService {
+
+	public interface Callback<T> {
+
+		void process(T value);
+
+	}
 
 	private static final String SELECTOR = "Selector";
 	private Repository repository;
@@ -160,10 +170,9 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 		String path = (String) pathAttribute.getValue(bean);
 		try {
 			Session session = getSession();
-			Node node = JcrUtils.getOrCreateByPath(path, false,
-					NodeType.NT_FOLDER, NodeType.NT_UNSTRUCTURED, session,
-					false);
-			System.out.println(node.getIdentifier());
+			Node node = JcrUtils.getOrCreateByPath(path, true,
+					NodeType.NT_UNSTRUCTURED, NodeType.NT_UNSTRUCTURED, session,
+					true);
 			return node;
 		} catch (Exception e) {
 			throw new TechnicalException("technical error during insert", e);
@@ -410,7 +419,8 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 	@Override
 	public SingleAttribute<? extends Serializable> getIdAttribute(
 			EntityType<?> entityType) {
-		return (SingleAttribute<? extends Serializable>) entityType.getAttribute("identifier");
+		return (SingleAttribute<? extends Serializable>) entityType
+				.getAttribute("identifier");
 	}
 
 	@Override
@@ -424,11 +434,11 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			Attribute<?, ?> attribute) {
 		return new JcrSingleAttributeQuery(attribute);
 	}
-	
-	public  class JcrSingleAttributeQuery implements  SingleAttributeQuery{
+
+	public class JcrSingleAttributeQuery implements SingleAttributeQuery {
 
 		private Attribute refAttribute;
-		
+
 		public JcrSingleAttributeQuery(Attribute refAttribute) {
 			super();
 			this.refAttribute = refAttribute;
@@ -436,28 +446,62 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 
 		@Override
 		public Object getResult(Object value) {
-			
-			Node result=null;
+
+			Node result = null;
 			Session session = getSession();
-			
+
 			try {
-				JcrRefType refType=(JcrRefType) refAttribute.getTargetType();
-				String identifier= refType.getId((String) refAttribute.getValue(value));
-				if (identifier!=null) {
-					result=session.getNodeByIdentifier(identifier);
+				JcrRefType refType = (JcrRefType) refAttribute.getTargetType();
+				String identifier = refType.getId((String) refAttribute
+						.getValue(value));
+				if (identifier != null) {
+					result = session.getNodeByIdentifier(identifier);
 				}
-				
+
 			} catch (ItemNotFoundException e) {
 				// not found return null
 			} catch (RepositoryException e) {
-				throw new TechnicalException("cannot find referenced node",e);
-			}finally {
+				throw new TechnicalException("cannot find referenced node", e);
+			} finally {
 				closeSession();
 			}
 			return result;
-			
-			
+
 		}
-		
+
 	}
+
+	public void getRoot(Callback<Node> callback) {
+		try {
+			Session session = createSession();
+			callback.process(session.getRootNode());
+		} catch (RepositoryException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			closeSession();
+		}
+	}
+
+	public void getChildren(Serializable parentId,
+			Callback<NodeIterator> callback) {
+		try {
+			Session session = createSession();
+			Node parent = session.getNodeByIdentifier(String.valueOf(parentId));
+
+			NodeIterator nodes = parent.getNodes();
+			callback.process(nodes);
+
+		} catch (ItemNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (RepositoryException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			closeSession();
+		}
+	}
+
+	
 }

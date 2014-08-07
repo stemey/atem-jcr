@@ -33,11 +33,16 @@
 		<property name="typeProperty" value="ext_type" />
 		<property name="services">
 			<list>
-				<bean class="org.atemsource.jcr.service.JcrCrudService"></bean>
+				<bean class="org.atemsource.jcr.service.JcrCrudService">
+					<property name="repository" ref="jcr-repository"/>
+				</bean>
+				<bean class="org.atemsource.atem.service.entity.collection.JpaGetCollectionService"/>
 			</list>
 		</property>
 
 	</bean>
+	
+	<bean abstract="true" id="jcr-repository"/>
 
 
 </beans>

@@ -26,7 +26,7 @@ public class JcrEntityTypeBuilderTest {
 		EntityTypeBuilder builder = jcrRepository.createBuilder("testPrmitive");
 		builder.addSingleAttribute("string", String.class);
 		EntityType<?> type = builder.createEntityType();
-		Assert.assertEquals(4, type.getAttributes().size());
+		Assert.assertEquals(5, type.getAttributes().size());
 		Assert.assertEquals(String.class,type.getAttribute("string").getTargetType().getJavaType());
 	}
 	
@@ -40,7 +40,7 @@ public class JcrEntityTypeBuilderTest {
 		EntityTypeBuilder builder = jcrRepository.createBuilder("testAsoc");
 		builder.addSingleAttribute("assoc",embeddedType);
 		EntityType<?> type = builder.createEntityType();
-		Assert.assertEquals(4, type.getAttributes().size());
+		Assert.assertEquals(5, type.getAttributes().size());
 		Assert.assertEquals(embeddedType,type.getAttribute("assoc").getTargetType());
 	}
 	
@@ -54,7 +54,7 @@ public class JcrEntityTypeBuilderTest {
 		EntityTypeBuilder builder = jcrRepository.createBuilder("testMultiAsoc");
 		builder.addMultiAssociationAttribute("assoc",embeddedType,CollectionSortType.ORDERABLE);
 		EntityType<?> type = builder.createEntityType();
-		Assert.assertEquals(4, type.getAttributes().size());
+		Assert.assertEquals(5, type.getAttributes().size());
 		Assert.assertEquals(embeddedType,type.getAttribute("assoc").getTargetType());
 	}
 }

@@ -24,7 +24,8 @@
 	<bean id="atem-jcr-repository" parent="atem-abstract-jcr-repository">
 	</bean>
 
-
+	<bean id="jcr-repository"  class="org.atemsource.jcr.InMemoryTestRepository">
+	</bean>
 
 
 

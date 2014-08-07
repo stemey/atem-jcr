@@ -1,7 +1,6 @@
 package org.atemsource.jcr.entitytype;
 
 import javax.jcr.Node;
-import javax.jcr.Repository;
 
 import org.atemsource.atem.api.infrastructure.exception.TechnicalException;
 import org.atemsource.atem.impl.common.AbstractEntityType;
@@ -53,5 +52,7 @@ public class JcrEntityType extends AbstractEntityType<Node> {
 	public boolean isInstance(Object value) {
 		return Node.class.isInstance(value);
 	}
+
+	
 
 }

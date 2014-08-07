@@ -46,6 +46,7 @@ import org.atemsource.atem.service.entity.search.AttributePredicate;
 import org.atemsource.atem.service.entity.search.Operator;
 import org.atemsource.atem.service.entity.search.Paging;
 import org.atemsource.atem.service.entity.search.Query;
+import org.atemsource.atem.utility.transform.api.AbstractTypeTransformationBuilder;
 import org.atemsource.atem.utility.transform.api.JacksonTransformationContext;
 import org.atemsource.atem.utility.transform.api.JavaConverter;
 import org.atemsource.atem.utility.transform.api.TransformationBuilderFactory;
@@ -123,7 +124,7 @@ public class JcrCrudServiceTest {
 		EntityType<Node> jcrType = (EntityType<Node>) builder.createEntityType();
 		
 		final EntityTypeBuilder targetBuilder = jsonRepository.createBuilder("target"+test);
-		TypeTransformationBuilder<Node,ObjectNode> transformationBuilder = (TypeTransformationBuilder<Node, ObjectNode>) transformationBuilderFactory.create(jcrType, targetBuilder);
+		TypeTransformationBuilder transformationBuilder = (TypeTransformationBuilder) transformationBuilderFactory.create(jcrType, targetBuilder);
 		
 		transformationBuilder.transform().from("string");
 		transformationBuilder.transform().from("identifier");
