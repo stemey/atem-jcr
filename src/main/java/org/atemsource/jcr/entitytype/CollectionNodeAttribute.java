@@ -22,6 +22,7 @@ public class CollectionNodeAttribute extends AbstractAttribute<Node, Node>
 		implements CollectionAttribute<Node, Node>,
 		AssociationAttribute<Node, Node> {
 
+
 	@Override
 	public Class<Node> getAssociationType() {
 		return Node.class;
@@ -48,6 +49,8 @@ public class CollectionNodeAttribute extends AbstractAttribute<Node, Node>
 		Node node = (Node) entity;
 		try {
 			return node.getNode(getCode());
+		} catch (PathNotFoundException e) {
+			return null;
 		} catch (RepositoryException e) {
 			throw new TechnicalException("cannot retrieve child nodes", e);
 		}
@@ -57,7 +60,7 @@ public class CollectionNodeAttribute extends AbstractAttribute<Node, Node>
 	@Override
 	public void addElement(Object entity, Node element) {
 		try {
-			if (element.getParent().getParent() != entity) {
+			if (!element.getParent().getParent().getIdentifier().equals(((Node)entity).getIdentifier())) {
 				throw new TechnicalException("cannot add child");
 			}
 		} catch (Exception e) {
@@ -98,7 +101,7 @@ public class CollectionNodeAttribute extends AbstractAttribute<Node, Node>
 	public Collection<Node> getElements(Object entity) {
 		List<Node> elements = new ArrayList<Node>();
 		Iterator<Node> iterator = getIterator(entity);
-		for (;iterator.hasNext();) {
+		for (; iterator.hasNext();) {
 			Node node = iterator.next();
 			elements.add(node);
 		}
@@ -122,7 +125,7 @@ public class CollectionNodeAttribute extends AbstractAttribute<Node, Node>
 			return new Long(nodes.getSize()).intValue();
 		} catch (RepositoryException e) {
 			throw new TechnicalException("cannot get size", e);
-		}catch (NoSuchElementException e) {
+		} catch (NoSuchElementException e) {
 			return 0;
 		}
 	}
@@ -155,11 +158,14 @@ public class CollectionNodeAttribute extends AbstractAttribute<Node, Node>
 		Node node = (Node) entity;
 		try {
 			Node child = node.getNode(getCode());
+			if (!child.hasProperty("childId")) {
+				child.setProperty("childId",1L);
+			}
 			return child;
 		} catch (PathNotFoundException e) {
 			try {
 				Node addNode = node.addNode(getCode());
-				addNode.setProperty("childId",1L);
+				addNode.setProperty("childId", 1L);
 				return addNode;
 			} catch (Exception e1) {
 				throw new TechnicalException("cannot add child", e);

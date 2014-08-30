@@ -10,6 +10,7 @@ import org.atemsource.atem.api.attribute.CollectionAttribute;
 import org.atemsource.atem.api.attribute.CollectionSortType;
 import org.atemsource.atem.api.attribute.relation.SingleAttribute;
 import org.atemsource.atem.api.type.EntityType;
+import org.atemsource.atem.api.type.MultiAssociationAttributeBuilder;
 import org.atemsource.atem.api.type.PrimitiveType;
 import org.atemsource.atem.api.type.SingleAssociationAttributeBuilder;
 import org.atemsource.atem.api.type.Type;
@@ -44,6 +45,9 @@ public class JcrEntityTypeBuilder extends AbstractEntityTypeBuilder {
 
 		ValueConverter<J> valueConverter = createConverter(type);
 		addAttribute(attribute);
+		if (valueConverter==null) {
+			throw new IllegalStateException("type not supported "+type.getJavaType().getName());
+		}
 		attribute.setValueConverter(valueConverter);
 
 		return attribute;
@@ -61,19 +65,41 @@ public class JcrEntityTypeBuilder extends AbstractEntityTypeBuilder {
 	}
 
 	@Override
+	public <R, T> MultiAssociationAttributeBuilder<R, T> addMultiAssociationAttribute(
+			String code) {
+		return new JcrMultiAssociationAttributeBuilder(code, getEntityType(),
+				entityTypeRepository);
+	}
+
+	@Override
 	public CollectionAttribute addMultiAssociationAttribute(String code,
 			Type targetType, Type[] validTypes,
 			CollectionSortType collectionSortType) {
-		CollectionNodeAttribute attribute = new CollectionNodeAttribute();
-		attribute.setCode(code);
-		attribute.setMetaType(entityTypeRepository.getEntityType(attribute));
-		attribute.setEntityType(getEntityType());
-		attribute.setTargetType(targetType);
-		addAttribute(attribute);
-		attribute.setWriteable(true);
-		attribute.setValidTargetTypes(validTypes);
+		if (targetType instanceof PrimitiveType<?>) {
+			PrimitiveListAttribute attribute = new PrimitiveListAttribute();
+			attribute.setCode(code);
+			attribute
+					.setMetaType(entityTypeRepository.getEntityType(attribute));
+			attribute.setEntityType(getEntityType());
+			attribute.setTargetType(targetType);
+			ValueConverter<?> valueConverter = createConverter((PrimitiveType<?>) targetType);
+			attribute.setValueConverter(valueConverter);
+			addAttribute(attribute);
+			attribute.setWriteable(true);
+			return attribute;
+		} else {
+			CollectionNodeAttribute attribute = new CollectionNodeAttribute();
+			attribute.setCode(code);
+			attribute
+					.setMetaType(entityTypeRepository.getEntityType(attribute));
+			attribute.setEntityType(getEntityType());
+			attribute.setTargetType(targetType);
+			addAttribute(attribute);
+			attribute.setWriteable(true);
+			attribute.setValidTargetTypes(validTypes);
 
-		return attribute;
+			return attribute;
+		}
 	}
 
 	@Override
@@ -91,7 +117,11 @@ public class JcrEntityTypeBuilder extends AbstractEntityTypeBuilder {
 	}
 
 	private <T> EntityType<T> createTypeProxy(EntityType<T> type) {
-		return (EntityType<T>) Proxy.newProxyInstance(type.getClass().getClassLoader(), new Class[]{EntityType.class}, new EntityTypeInvocationHandler(entityTypeRepository,type.getCode()));
+		return (EntityType<T>) Proxy.newProxyInstance(
+				type.getClass().getClassLoader(),
+				new Class[] { EntityType.class },
+				new EntityTypeInvocationHandler(entityTypeRepository, type
+						.getCode()));
 	}
 
 	private <T> ValueConverter<T> createConverter(PrimitiveType<T> type) {

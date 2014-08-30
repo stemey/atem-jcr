@@ -24,9 +24,21 @@ public class SingleNodeAttribute extends AbstractAttribute<Node, Node>
 	@Override
 	public void setValue(Object entity, Node value) {
 		try {
-			if (value.getParent() != entity) {
-				throw new UnsupportedOperationException(
-						"cannot move child nodes like this");
+			
+			Node node=(Node) entity;
+			if (value == null) {
+				if (node.hasNode(getCode())) {
+					Node child = node.getNode(getCode());
+					if (child != null) {
+						child.remove();
+					}
+				}
+			} else {
+				if (!value.getParent().getIdentifier()
+						.equals(node.getIdentifier())) {
+					throw new UnsupportedOperationException(
+							"cannot move child nodes like this");
+				}
 			}
 		} catch (Exception e) {
 			throw new TechnicalException("cannot check parent", e);
@@ -42,7 +54,8 @@ public class SingleNodeAttribute extends AbstractAttribute<Node, Node>
 	public <T extends Node> T createTarget(EntityType<T> targetType,
 			Object parent) {
 		try {
-			return (T) ((Node) parent).addNode(getCode());
+			 T t=(T) ((Node) parent).addNode(getCode());
+			  return t;
 		} catch (Exception e) {
 			throw new TechnicalException("cannot check parent", e);
 		}

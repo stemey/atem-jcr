@@ -1,7 +1,7 @@
 package org.atemsource.jcr.service;
 
-import java.io.IOException;
 import java.io.Serializable;
+import java.lang.reflect.Array;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
@@ -21,14 +21,16 @@ import javax.jcr.query.InvalidQueryException;
 import javax.jcr.query.QueryResult;
 import javax.jcr.query.qom.Comparison;
 import javax.jcr.query.qom.Constraint;
+import javax.jcr.query.qom.DynamicOperand;
+import javax.jcr.query.qom.Operand;
 import javax.jcr.query.qom.Ordering;
+import javax.jcr.query.qom.PropertyExistence;
 import javax.jcr.query.qom.QueryObjectModel;
 import javax.jcr.query.qom.QueryObjectModelFactory;
 import javax.jcr.query.qom.Selector;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 import org.apache.jackrabbit.commons.JcrUtils;
+import org.apache.jackrabbit.commons.query.sql2.QOMFormatter;
 import org.atemsource.atem.api.attribute.Attribute;
 import org.atemsource.atem.api.attribute.relation.SingleAttribute;
 import org.atemsource.atem.api.infrastructure.exception.TechnicalException;
@@ -44,7 +46,6 @@ import org.atemsource.atem.api.type.Type;
 import org.atemsource.atem.service.entity.EntityRestService.Result;
 import org.atemsource.atem.service.entity.FindByIdService;
 import org.atemsource.atem.service.entity.FindByTypeService;
-import org.atemsource.atem.service.entity.GetCollectionService;
 import org.atemsource.atem.service.entity.ListCallback;
 import org.atemsource.atem.service.entity.ReturnErrorObject;
 import org.atemsource.atem.service.entity.SingleCallback;
@@ -56,12 +57,10 @@ import org.atemsource.atem.service.entity.search.Operator;
 import org.atemsource.atem.service.entity.search.Paging;
 import org.atemsource.atem.service.entity.search.Query;
 import org.atemsource.atem.service.entity.search.Sorting;
-import org.atemsource.atem.service.refresolver.CollectionResource;
 import org.atemsource.atem.utility.transform.api.meta.DerivedType;
 import org.atemsource.atem.utility.transform.service.CreationService;
 import org.atemsource.jcr.entitytype.JcrEntityType;
 import org.atemsource.jcr.entitytype.JcrRefType;
-import org.codehaus.jackson.node.ObjectNode;
 
 /**
  * 
@@ -107,7 +106,7 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 
 	private static ThreadLocal<Session> sessionHolder = new ThreadLocal<Session>();
 
-	Session createSession() {
+	public Session createSession() {
 		if (hasSession()) {
 			return sessionHolder.get();
 		}
@@ -137,10 +136,10 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 		Session session = null;
 		try {
 			session = request.getSession();
-			Node entity = (Node) callback.get();
+			E entity = callback.get();
 			// transfomer already added node to tree
 			session.save();
-			return entity.getIdentifier();
+			return (String) getId(entityType, entity);
 		} catch (Exception e) {
 			throw new TechnicalException("cannot persist node", e);
 		} finally {
@@ -167,12 +166,20 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 				.getValue(jsonType);
 		Attribute pathAttribute = derivedType.getTransformation()
 				.getDerivedAttribute(entityType.getAttribute("path"));
+		// String path = (String)
+		// entityType.getAttribute("path").getValue(bean);
+		if (pathAttribute==null) {
+			// need to use targetAttribute.createTarget
+			return null;
+		}
 		String path = (String) pathAttribute.getValue(bean);
 		try {
 			Session session = getSession();
-			Node node = JcrUtils.getOrCreateByPath(path, true,
-					NodeType.NT_UNSTRUCTURED, NodeType.NT_UNSTRUCTURED, session,
-					true);
+			Node node = JcrUtils.getOrCreateByPath(path, false,
+					NodeType.NT_UNSTRUCTURED, NodeType.NT_UNSTRUCTURED,
+					session, true);
+			//node.addMixin(NodeType.MIX_REFERENCEABLE);
+			// TODO referenacable does not work with mongodb
 			return node;
 		} catch (Exception e) {
 			throw new TechnicalException("technical error during insert", e);
@@ -223,7 +230,14 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			SingleCallback<O, T> callback) {
 		Session session = createSession();
 		try {
-			Node node = session.getNodeByIdentifier(id.toString());
+//			javax.jcr.query.Query query = session.getWorkspace().getQueryManager().createQuery(
+//					"select * from [nt:unstructured] where [jcr:uuid] = $id",
+//					javax.jcr.query.Query.JCR_SQL2);
+//			Value idValue = session.getValueFactory().createValue((String)id);
+//			query.bindValue("id", idValue);
+//			QueryResult queryResult = query.execute();
+//			Node node=queryResult.getNodes().next();
+			Node node=session.getNodeByIdentifier((String)id);
 			return callback.process((O) node);
 
 		} catch (ItemNotFoundException e) {
@@ -240,14 +254,8 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			throws InvalidQueryException, RepositoryException {
 		QueryObjectModelFactory qomFactory = getSession().getWorkspace()
 				.getQueryManager().getQOMFactory();
-		Value typeValue = getSession().getValueFactory().createValue(
-				entityType.getCode());
-		Comparison typeComparison = qomFactory
-				.comparison(
-						qomFactory.propertyValue(SELECTOR,
-								entityType.getTypeProperty()),
-						qomFactory.JCR_OPERATOR_EQUAL_TO,
-						qomFactory.literal(typeValue));
+		PropertyExistence typeComparison = qomFactory.propertyExistence(
+				SELECTOR, "template");
 
 		Ordering[] orderings = null;
 		if (sorting != null) {
@@ -262,7 +270,7 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 		}
 
 		Constraint constraint;
-		if (query != null) {
+		if (query != null && query.getPredicates().size()>0) {
 			Constraint subquery = createSubquery(query, qomFactory);
 			constraint = qomFactory.and(typeComparison, subquery);
 		} else {
@@ -280,12 +288,35 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			throws UnsupportedRepositoryOperationException, RepositoryException {
 		Constraint previousConstraint = null;
 		for (AttributePredicate<?> predicate : query.getPredicates()) {
-			Value value = getValue(predicate.getValue());
-			Constraint constraint = qomFactory.comparison(
-					qomFactory.propertyValue(SELECTOR, predicate.getAttribute()
-							.getCode()), getOperator(predicate.getOperator()),
-					qomFactory.literal(value));
+			Constraint constraint = null;
+			if (predicate.getOperator() == Operator.IN) {
+				Constraint in = null;
+				for (String text : (String[]) predicate.getValue()) {
+					Value value = getSession().getValueFactory().createValue(
+							text);
+					Constraint comparison = qomFactory
+							.comparison(
+									createOperand(qomFactory,
+											predicate.getAttribute()),
+									QueryObjectModelFactory.JCR_OPERATOR_EQUAL_TO,
+									qomFactory.literal(value));
+					if (in == null) {
+						in = comparison;
+					} else {
+						in = qomFactory.or(in, comparison);
+					}
+				}
+				constraint = in;
+			} else {
 
+				Value value = getValue(predicate.getValue());
+
+				DynamicOperand operand = createOperand(qomFactory,
+						predicate.getAttribute());
+				constraint = qomFactory.comparison(operand,
+						getOperator(predicate.getOperator()),
+						qomFactory.literal(value));
+			}
 			if (previousConstraint != null) {
 				if (query.isOr()) {
 					previousConstraint = qomFactory.or(previousConstraint,
@@ -300,6 +331,17 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 		}
 		return previousConstraint;
 
+	}
+
+	private DynamicOperand createOperand(QueryObjectModelFactory qomFactory,
+			SingleAttribute<?> attribute) throws InvalidQueryException,
+			RepositoryException {
+		if (attribute.getCode().equals("path")) {
+			return qomFactory.propertyValue(SELECTOR, "jcr:path");
+			// return qomFactory.nodeName(SELECTOR);
+		} else {
+			return qomFactory.propertyValue(SELECTOR, attribute.getCode());
+		}
 	}
 
 	private String getOperator(Operator operator) {
@@ -358,7 +400,11 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			NodeIterator nodes = queryResult.getNodes();
 			List<O> entities = new LinkedList<O>();
 			for (; nodes.hasNext();) {
+				try {
 				entities.add((O) nodes.nextNode());
+				} catch (Exception e) {
+					//LOG
+				}
 			}
 			return listCallback.process(entities, -1);
 		} catch (ItemNotFoundException e) {
@@ -380,7 +426,8 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 		Session session = createSession();
 		try {
 			// assuming that id = path
-			session.removeItem((String) id);
+			session.getNodeByIdentifier((String) id).remove();
+			;
 			session.save();
 		} catch (Exception e) {
 			throw new TechnicalException("cannot remove node", e);
@@ -394,7 +441,7 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			EntityType<?> originalType, UpdateCallback callback) {
 		Session session = createSession();
 		try {
-			Node node = session.getNode((String) id);
+			Node node = session.getNodeByIdentifier((String) id);
 			callback.update(node);
 			session.save();
 			return null;
@@ -426,7 +473,8 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 	@Override
 	public AttributeQuery prepareQuery(EntityType<?> entityType,
 			Attribute<?, ?> attribute) {
-		throw new UnsupportedOperationException("not implemented yet");
+		// TODO implement query
+		return null;//throw new UnsupportedOperationException("not implemented yet");
 	}
 
 	@Override
@@ -502,6 +550,4 @@ public class JcrCrudService implements InsertionService, StatefulUpdateService,
 			closeSession();
 		}
 	}
-
-	
 }

@@ -12,7 +12,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 import javax.jcr.Node;
+import javax.jcr.PathNotFoundException;
+import javax.jcr.Property;
 
+import org.apache.log4j.Logger;
 import org.atemsource.atem.api.BeanLocator;
 import org.atemsource.atem.api.EntityTypeRepository;
 import org.atemsource.atem.api.infrastructure.exception.TechnicalException;
@@ -30,6 +33,7 @@ import org.atemsource.atem.spi.DynamicEntityTypeSubrepository;
 import org.atemsource.atem.spi.EntityTypeCreationContext;
 import org.atemsource.jcr.entitytype.JcrEntityType;
 import org.atemsource.jcr.entitytype.JcrEntityTypeBuilder;
+import org.atemsource.jcr.entitytype.PathAttribute;
 import org.atemsource.jcr.entitytype.ValueConverter;
 import org.atemsource.jcr.entitytype.converter.BooleanConverter;
 import org.atemsource.jcr.entitytype.converter.DoubleConverter;
@@ -41,6 +45,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 		implements DynamicEntityTypeSubrepository<Node>,
 		EntityTypeBuilderCallback {
+	private static Logger logger = Logger.getLogger(JcrEntityTypeRepository.class);
+	
 	public class ReplaceCallback implements EntityTypeBuilderCallback {
 
 		@Override
@@ -52,7 +58,7 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 
 	@Autowired
 	private BeanLocator beanLocator;
-	
+
 	private Map<Class, ValueConverter> converterMap = new HashMap<Class, ValueConverter>();
 
 	public void setConverterMap(Map<Class, ValueConverter> converterMap) {
@@ -78,72 +84,74 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 	public EntityTypeBuilder createBuilder(String code) {
 		JcrEntityType entityType = createEntityType(code);
 		JcrEntityTypeBuilder builder = createBuilder(entityType);
-		
-		
+		logger.debug("creating new type "+code);
 		return builder;
 	}
 
 	private JcrEntityTypeBuilder createBuilder(JcrEntityType entityType) {
-		JcrEntityTypeBuilder builder = beanLocator.getInstance(JcrEntityTypeBuilder.class);
+		JcrEntityTypeBuilder builder = beanLocator
+				.getInstance(JcrEntityTypeBuilder.class);
 		try {
-			PrimitiveAttributeImpl<String> pathAttribute = new PrimitiveAttributeImpl<String>();
-			pathAttribute.setAccessor(new PojoAccessor(Node.class.getMethod("getPath", new Class[0])));
+			PathAttribute pathAttribute = new PathAttribute();
+			pathAttribute.setAccessor(new PojoAccessor(Node.class.getMethod(
+					"getPath", new Class[0])));
 			pathAttribute.setCode("path");
 			pathAttribute.setTargetType(new SimpleTextType());
 			pathAttribute.setEntityType(entityType);
 			entityType.addAttribute(pathAttribute);
 			PrimitiveAttributeImpl<String> identifierAttribute = new PrimitiveAttributeImpl<String>();
-			identifierAttribute.setAccessor(new PojoAccessor(Node.class.getMethod("getIdentifier", new Class[0])));
+			identifierAttribute.setAccessor(new PojoAccessor(Node.class
+					.getMethod("getIdentifier", new Class[0])));
 			identifierAttribute.setCode("identifier");
 			identifierAttribute.setTargetType(new SimpleTextType());
 			identifierAttribute.setEntityType(entityType);
 			entityType.addAttribute(identifierAttribute);
 			PrimitiveAttributeImpl<String> nameAttribute = new PrimitiveAttributeImpl<String>();
-			nameAttribute.setAccessor(new PojoAccessor(Node.class.getMethod("getName", new Class[0])));
+			nameAttribute.setAccessor(new PojoAccessor(Node.class.getMethod(
+					"getName", new Class[0])));
 			nameAttribute.setCode("name");
 			nameAttribute.setTargetType(new SimpleTextType());
 			nameAttribute.setEntityType(entityType);
 			entityType.addAttribute(nameAttribute);
-			
-			
+
 		} catch (Exception e) {
-			throw new TechnicalException("cannot find accessors for jcr nodes",e);
+			throw new TechnicalException("cannot find accessors for jcr nodes",
+					e);
 		}
-		
-		
+
 		builder.setEntityType(entityType);
 		builder.setEntityClass(Node.class);
 		builder.setRepositoryCallback(this);
 		builder.setConverterMap(converterMap);
-		
+
 		builder.addSingleAttribute(getTypeProperty(), String.class);
 		return builder;
 	}
-	
+
 	public EntityTypeBuilder replaceBuilder(String code) {
 		final JcrEntityType dynamicEntityTypeImpl = beanLocator
 				.getInstance(JcrEntityType.class);
 		dynamicEntityTypeImpl.setTypeCodeConverter(typeCodeConverter);
 		dynamicEntityTypeImpl.setCode(code);
 		dynamicEntityTypeImpl.setTypeProperty(typeProperty);
-		
+
 		JcrEntityTypeBuilder builder = createBuilder(dynamicEntityTypeImpl);
-		
+
 		builder.setRepositoryCallback(new ReplaceCallback());
 
 		return builder;
 	}
 
 	public void onReplaced(JcrEntityType entityType) {
-		AbstractEntityType<Node> previousType = nameToEntityTypes.get(entityType.getCode());
-		
-		Collection<IncomingRelation> incomingAssociations = previousType.getIncomingAssociations();
-		
+		AbstractEntityType<Node> previousType = nameToEntityTypes
+				.get(entityType.getCode());
+
+		Collection<IncomingRelation> incomingAssociations = previousType
+				.getIncomingAssociations();
+
 		((AbstractEntityType) previousType)
-		.removeOutgoingAssociations(previousType);
-		
-		
-		
+				.removeOutgoingAssociations(previousType);
+
 		this.nameToEntityTypes.put(entityType.getCode(), entityType);
 		entityTypes.add(entityType);
 		entityType.setMetaType((EntityType) entityTypeCreationContext
@@ -151,9 +159,9 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 		attacheServicesToEntityType(entityType);
 		((AbstractEntityType) entityType)
 				.initializeIncomingAssociations(entityTypeCreationContext);
-		
-		for (IncomingRelation<?,?> incomingRelation:incomingAssociations) {
-		entityType.addIncomingAssociation(incomingRelation);
+
+		for (IncomingRelation<?, ?> incomingRelation : incomingAssociations) {
+			entityType.addIncomingAssociation(incomingRelation);
 		}
 		entityTypeCreationContext.lazilyInitialized(entityType);
 	}
@@ -161,6 +169,7 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 	public JcrEntityType createEntityType(String code) {
 		final JcrEntityType dynamicEntityTypeImpl = beanLocator
 				.getInstance(JcrEntityType.class);
+		dynamicEntityTypeImpl.setRepository(this);
 		dynamicEntityTypeImpl.setTypeCodeConverter(typeCodeConverter);
 		dynamicEntityTypeImpl.setCode(code);
 		dynamicEntityTypeImpl.setTypeProperty(typeProperty);
@@ -171,7 +180,7 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 		}
 		this.nameToEntityTypes.put(code, dynamicEntityTypeImpl);
 		entityTypes.add(dynamicEntityTypeImpl);
-		
+
 		return dynamicEntityTypeImpl;
 	}
 
@@ -179,13 +188,19 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 	public EntityType<Node> getEntityType(Object entity) {
 		try {
 			Node node = (Node) entity;
-			String typeCode = node.getProperty(typeProperty).getString();
-			return getEntityType(typeCode);
+
+			try {
+				Property property = node.getProperty(typeProperty);
+				String typeCode = property.getString();
+				return getEntityType(typeCode);
+			} catch (PathNotFoundException e) {
+				return null;
+			}
 
 		} catch (ClassCastException e) {
 			return null;
 		} catch (Exception e) {
-			throw new TechnicalException("cannot get type property of Node",e);
+			throw new TechnicalException("cannot get type property of Node", e);
 		}
 
 	}
@@ -222,8 +237,5 @@ public class JcrEntityTypeRepository extends AbstractMetaDataRepository<Node>
 	public void setTypeProperty(String typeProperty) {
 		this.typeProperty = typeProperty;
 	}
-	
-	
-	
 
 }

@@ -23,20 +23,56 @@
 
 	<context:component-scan base-package="org.atemsource.atem.jcr">
 	</context:component-scan>
+	
+	<bean id="jcr-objectMapper" class="org.codehaus.jackson.map.ObjectMapper"/>
 
 	<bean scope="prototype" class="org.atemsource.jcr.entitytype.JcrEntityTypeBuilder" />
 	<bean scope="prototype" class="org.atemsource.jcr.entitytype.JcrEntityType" />
 
 
+	<bean id="gridxQueryParser"
+		class="org.atemsource.atem.service.entity.collection.GridxQueryParser">
+		<property name="objectMapper" ref="jcr-objectMapper" />
+	</bean>
+
+	<bean id="contentHeaderPagingParser"
+		class="org.atemsource.atem.service.entity.collection.ContentHeaderPagingParser">
+	</bean>
+
+	<bean id="sortingParser"
+		class="org.atemsource.atem.service.entity.collection.GridxSortingParser">
+	</bean>
+
+	<bean id="jpaGetCollectionService"
+		class="org.atemsource.atem.service.entity.collection.JpaGetCollectionService">
+		<property name="entityTypeRepository" ref="atem-repository" />
+		<property name="objectMapper" ref="jcr-objectMapper" />
+		<property name="pagingManager" ref="contentHeaderPagingParser" />
+		<property name="parser" ref="gridxQueryParser" />
+		<property name="sortingParser" ref="sortingParser" />
+	</bean>
+
 	<bean abstract="true" id="atem-abstract-jcr-repository"
 		class="org.atemsource.jcr.JcrEntityTypeRepository">
-		<property name="typeProperty" value="ext_type" />
+		<property name="typeProperty" value="template" />
 		<property name="services">
 			<list>
 				<bean class="org.atemsource.jcr.service.JcrCrudService">
 					<property name="repository" ref="jcr-repository"/>
+<!-- 					<property name="credentials"> -->
+<!-- 						<bean class="javax.jcr.SimpleCredentials"> -->
+<!-- 							<constructor-arg index="0" value="admin"/> -->
+<!-- 							<constructor-arg index="1" value="admin"/> -->
+<!-- 						</bean> -->
+<!-- 					</property> -->
 				</bean>
-				<bean class="org.atemsource.atem.service.entity.collection.JpaGetCollectionService"/>
+				<bean class="org.atemsource.atem.service.entity.collection.JpaGetCollectionService">
+					<property name="entityTypeRepository" ref="atem-repository"/>
+					<property name="objectMapper" ref="jcr-objectMapper"/>
+					<property name="pagingManager" ref="contentHeaderPagingParser"/>
+					<property name="parser" ref="gridxQueryParser"/>
+					<property name="sortingParser" ref="sortingParser"/>
+				</bean>
 			</list>
 		</property>
 

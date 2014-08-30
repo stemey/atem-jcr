@@ -21,6 +21,7 @@ import org.atemsource.atem.api.attribute.CollectionSortType;
 import org.atemsource.atem.api.infrastructure.exception.TechnicalException;
 import org.atemsource.atem.api.type.Type;
 import org.atemsource.atem.impl.common.attribute.AbstractAttribute;
+import org.codehaus.jackson.node.ObjectNode;
 
 public class PrimitiveListAttribute<T, R> extends AbstractAttribute<T, R>
 		implements CollectionAttribute<T, R> {
@@ -45,11 +46,11 @@ public class PrimitiveListAttribute<T, R> extends AbstractAttribute<T, R>
 	public void setValue(Object entity, R value) {
 		try {
 			if (value == null) {
-				Node node=(Node) entity;
+				Node node = (Node) entity;
 				if (node.hasProperty(getCode())) {
 					node.getProperty(getCode()).remove();
 				}
-		
+
 			} else {
 				T[] array = (T[]) value;
 				Value[] values = new Value[array.length];
@@ -74,10 +75,10 @@ public class PrimitiveListAttribute<T, R> extends AbstractAttribute<T, R>
 		return getTargetType();
 	}
 
-	@Override
-	public Type<T> getTargetType() {
-		return valueConverter.getType();
-	}
+	// @Override
+	// public Type<T> getTargetType() {
+	// return valueConverter.getType();
+	// }
 
 	@Override
 	public R getValue(Object entity) {
@@ -91,6 +92,8 @@ public class PrimitiveListAttribute<T, R> extends AbstractAttribute<T, R>
 	private Value[] getValues(Object entity) {
 		try {
 			return ((Node) entity).getProperty(getCode()).getValues();
+		} catch (PathNotFoundException  e) {
+			return new Value[0];
 		} catch (Exception e) {
 			throw new TechnicalException("cannot get value", e);
 		}
@@ -104,9 +107,15 @@ public class PrimitiveListAttribute<T, R> extends AbstractAttribute<T, R>
 			for (int i = 0; i < values.length; i++) {
 				newValues[i] = values[i];
 			}
-			newValues[newValues.length - 1] = valueConverter
-					.convertToValue(element);
-			((Node) entity).getProperty(getCode()).setValue(newValues);
+			if (element instanceof ObjectNode) {
+				String s = String.valueOf(element);
+				newValues[newValues.length - 1] = valueConverter
+						.convertToValue((T) s);
+			} else {
+				newValues[newValues.length - 1] = valueConverter
+						.convertToValue(element);
+			}
+			((Node) entity).setProperty(getCode(), newValues);
 		} catch (Exception e) {
 			throw new TechnicalException("cannot add element", e);
 		}
@@ -116,9 +125,12 @@ public class PrimitiveListAttribute<T, R> extends AbstractAttribute<T, R>
 	public void clear(Object entity) {
 		try {
 			Value[] newValues = new Value[0];
-			((Node) entity).getProperty(getCode()).setValue(newValues);
+			((Node) entity).setProperty(getCode(), newValues);
+
+		} catch (PathNotFoundException e) {
+			//
 		} catch (Exception e) {
-			throw new TechnicalException("cannot add element", e);
+			throw new TechnicalException("cannot clear elements", e);
 		}
 	}
 

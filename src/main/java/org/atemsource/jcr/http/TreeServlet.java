@@ -2,6 +2,9 @@ package org.atemsource.jcr.http;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 import javax.jcr.Node;
 import javax.jcr.NodeIterator;
@@ -21,12 +24,20 @@ import org.atemsource.jcr.service.JcrCrudService.Callback;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ObjectNode;
 
+
 public class TreeServlet extends HttpServlet {
 
 	private static final String TYPE_PROPERTY = "template";
 	private static final long serialVersionUID = 1L;
 	private ObjectMapper objectMapper = new ObjectMapper();
 	private Cors cors = new Cors();
+	private Set<String> invisibleNodes = new HashSet<String>() {
+		{
+			this.add("jcr:system");
+			this.add("oak:index");
+			this.add("schemas");
+		}
+	};
 
 	@Override
 	protected void doOptions(HttpServletRequest req, HttpServletResponse resp)
@@ -67,9 +78,12 @@ public class TreeServlet extends HttpServlet {
 						while (iterator.hasNext()) {
 
 							try {
-								writer.write(convert(iterator.nextNode()));
+								Node nextNode = iterator.nextNode();
+								if (!invisibleNodes.contains(nextNode.getName())) {
+								writer.write(convert(nextNode));
 								if (iterator.hasNext()) {
 									writer.write(",");
+								}
 								}
 							} catch (IOException e) {
 								throw new TechnicalException(
@@ -91,9 +105,10 @@ public class TreeServlet extends HttpServlet {
 		json.put("id", node.getIdentifier());
 		boolean entity = node.hasProperty(TYPE_PROPERTY);
 		json.put("folder", !entity);
-		if(entity) {
+		if (entity) {
 			// TODO replace conversion to json type by transformation logic
-			json.put("template", node.getProperty("template").getString().substring("jcr:".length()));
+			json.put("template", node.getProperty("template").getString()
+					.substring("jcr:".length()));
 		}
 		return json.toString();
 	}

@@ -46,7 +46,6 @@ import org.atemsource.atem.service.entity.search.AttributePredicate;
 import org.atemsource.atem.service.entity.search.Operator;
 import org.atemsource.atem.service.entity.search.Paging;
 import org.atemsource.atem.service.entity.search.Query;
-import org.atemsource.atem.utility.transform.api.AbstractTypeTransformationBuilder;
 import org.atemsource.atem.utility.transform.api.JacksonTransformationContext;
 import org.atemsource.atem.utility.transform.api.JavaConverter;
 import org.atemsource.atem.utility.transform.api.TransformationBuilderFactory;
@@ -120,16 +119,16 @@ public class JcrCrudServiceTest {
 	public  void setupClass() {
 		test++;
 		final EntityTypeBuilder builder = jcrRepository.createBuilder("create"+test);
-		builder.addSingleAttribute("string", String.class);
+		builder.addSingleAttribute("text", String.class);
 		EntityType<Node> jcrType = (EntityType<Node>) builder.createEntityType();
 		
 		final EntityTypeBuilder targetBuilder = jsonRepository.createBuilder("target"+test);
 		TypeTransformationBuilder transformationBuilder = (TypeTransformationBuilder) transformationBuilderFactory.create(jcrType, targetBuilder);
 		
-		transformationBuilder.transform().from("string");
+		transformationBuilder.transform().from("text").to("string");
 		transformationBuilder.transform().from("identifier");
 		transformationBuilder.transform().from("path");
-		transformationBuilder.transform().from("ext_type").convert(new JavaConverter<String,String>() {
+		transformationBuilder.transform().from("template").convert(new JavaConverter<String,String>() {
 
 			@Override
 			public String convertAB(String a, TransformationContext ctx) {
@@ -166,7 +165,7 @@ public class JcrCrudServiceTest {
 		ObjectNode node = objectMapper.createObjectNode();
 		node.put("path","/a/b2");
 		node.put("string", "hallo");
-		node.put("ext_type", transformation.getEntityTypeB().getCode());
+		node.put("template", transformation.getEntityTypeB().getCode());
 		
 		
 		Node newNode = (Node) service.create(transformation.getEntityTypeA(), transformation.getEntityTypeB(), node);
@@ -174,6 +173,8 @@ public class JcrCrudServiceTest {
 		Assert.assertNotNull(newNode);
 		Assert.assertEquals("/a/b2",newNode.getPath());
 		Assert.assertNotNull(newNode.getIdentifier());
+		
+		
 		} finally {
 			((JcrCrudService)service).closeSession();
 		}
@@ -192,7 +193,7 @@ public class JcrCrudServiceTest {
 		final ObjectNode node = objectMapper.createObjectNode();
 		node.put("path","/b");
 		node.put("string", "hallo");
-		node.put("ext_type", transformation.getEntityTypeB().getCode());
+		node.put("template", transformation.getEntityTypeB().getCode());
 		
 		
 		String id = insert(service, node);
@@ -226,12 +227,14 @@ public class JcrCrudServiceTest {
 		final ObjectNode node = objectMapper.createObjectNode();
 		node.put("path","/b");
 		node.put("string", "hallo");
-		node.put("ext_type", transformation.getEntityTypeB().getCode());
+		node.put("template", transformation.getEntityTypeB().getCode());
 		
 		
 		String id = insert(service, node);
 		
-		node.put("string", "bye");
+		Assert.assertEquals("/b", id);
+		
+		node.put("string", "hanswurst");
 		
 		StatefulUpdateService updateService = entityTypeA.getService(StatefulUpdateService.class);
 		updateService.update(id, entityTypeA, new UpdateCallback<Node>() {
@@ -253,7 +256,52 @@ public class JcrCrudServiceTest {
 			}
 			
 		});
-		Assert.assertEquals("bye",updateNode.get("string").getTextValue());
+		Assert.assertEquals("hanswurst",updateNode.get("string").getTextValue());
+		
+	}
+	
+	@Test
+	public void move() throws RepositoryException {
+		
+		EntityType<Node> entityTypeA = transformation.getEntityTypeA();
+		InsertionService service = entityTypeA.getService(InsertionService.class);
+		
+		
+		
+		
+		final ObjectNode node = objectMapper.createObjectNode();
+		node.put("path","/bb");
+		node.put("string", "hallo");
+		node.put("template", transformation.getEntityTypeB().getCode());
+		
+		
+		String id = insert(service, node);
+		
+		node.put("string", "hanswurst");
+		String newId = "/ba";
+		node.put("path", newId);
+		
+		StatefulUpdateService updateService = entityTypeA.getService(StatefulUpdateService.class);
+		updateService.update(id, entityTypeA, new UpdateCallback<Node>() {
+
+			@Override
+			public ReturnErrorObject update(Node entity) {
+				transformation.getBA().merge(node, entity, new JacksonTransformationContext(entityTypeRepository));
+				return null;
+			}
+		});
+		
+		
+		FindByIdService findById = entityTypeA.getService(FindByIdService.class);
+		ObjectNode updateNode = findById.findById(entityTypeA, newId, new SingleCallback<Node,ObjectNode>() {
+
+			@Override
+			public ObjectNode process(Node entity) {
+				return transformation.getAB().convert(entity, new JacksonTransformationContext(entityTypeRepository));
+			}
+			
+		});
+		Assert.assertNotNull(updateNode);
 		
 	}
 	
@@ -271,7 +319,7 @@ public class JcrCrudServiceTest {
 		final ObjectNode node = objectMapper.createObjectNode();
 		node.put("path","/bc");
 		node.put("string", "hallo");
-		node.put("ext_type", transformation.getEntityTypeB().getCode());
+		node.put("template", transformation.getEntityTypeB().getCode());
 		
 		
 		String id = (String) service.insert(entityTypeA, new InsertionCallback<Node>() {
@@ -294,7 +342,7 @@ public class JcrCrudServiceTest {
 		});
 		Assert.assertNotNull(insertedNode);
 		Assert.assertEquals("hallo",insertedNode.get("string").getTextValue());
-		Assert.assertNotNull(insertedNode.get("ext_type").getTextValue());
+		Assert.assertNotNull(insertedNode.get("template").getTextValue());
 		
 		
 	}
@@ -312,20 +360,20 @@ public class JcrCrudServiceTest {
 		final ObjectNode node2 = objectMapper.createObjectNode();
 		node2.put("path","/b1");
 		node2.put("string", "hallo");
-		node2.put("ext_type", transformation.getEntityTypeB().getCode());
+		node2.put("template", transformation.getEntityTypeB().getCode());
 		insert(service, node2);
 
 		final ObjectNode node1 = objectMapper.createObjectNode();
 		node1.put("path","/b2");
 		node1.put("string", "hallo");
-		node1.put("ext_type", transformation.getEntityTypeB().getCode());
+		node1.put("template", transformation.getEntityTypeB().getCode());
 		insert(service, node1);
 
 		
 		final ObjectNode node = objectMapper.createObjectNode();
 		node.put("path","/b3");
 		node.put("string", "hallo");
-		node.put("ext_type", transformation.getEntityTypeB().getCode());
+		node.put("template", transformation.getEntityTypeB().getCode());
 		insert(service, node);
 		
 
@@ -367,27 +415,27 @@ public class JcrCrudServiceTest {
 
 		final ObjectNode node2 = objectMapper.createObjectNode();
 		node2.put("path","/b1");
-		node2.put("string", "ballo");
-		node2.put("ext_type", transformation.getEntityTypeB().getCode());
+		node2.put("string", "byllo");
+		node2.put("template", transformation.getEntityTypeB().getCode());
 		insert(service, node2);
 
 		final ObjectNode node1 = objectMapper.createObjectNode();
 		node1.put("path","/b2");
 		node1.put("string", "bye");
-		node1.put("ext_type", transformation.getEntityTypeB().getCode());
+		node1.put("template", transformation.getEntityTypeB().getCode());
 		insert(service, node1);
 
 		
 		final ObjectNode node = objectMapper.createObjectNode();
 		node.put("path","/b3");
 		node.put("string", "welcome");
-		node.put("ext_type", transformation.getEntityTypeB().getCode());
+		node.put("template", transformation.getEntityTypeB().getCode());
 		insert(service, node);
 		
-		SingleAttribute<String> attribute = (SingleAttribute<String>) transformation.getEntityTypeA().getAttribute("string");
+		SingleAttribute<String> attribute = (SingleAttribute<String>) transformation.getEntityTypeA().getAttribute("text");
 		
 		Query query = new Query(true, new ArrayList<AttributePredicate<?>>());
-		query.getPredicates().add(new AttributePredicate<String>(attribute, Operator.LIKE, "b%"));
+		query.getPredicates().add(new AttributePredicate<String>(attribute, Operator.LIKE, "by%"));
 		FindByTypeService finder = entityTypeA.getService(FindByTypeService.class);
 		Result result = finder.getEntities(entityTypeA,query,null,null, new ListCallback<Node>() {
 
@@ -413,6 +461,65 @@ public class JcrCrudServiceTest {
 		
 		
 	}
+
+	
+	@Test
+	public void findByIn() throws RepositoryException {
+		
+		EntityType<Node> entityTypeA = transformation.getEntityTypeA();
+		InsertionService service = entityTypeA.getService(InsertionService.class);
+		
+		
+
+		final ObjectNode node2 = objectMapper.createObjectNode();
+		node2.put("path","/b1");
+		node2.put("string", "ballo");
+		node2.put("template", transformation.getEntityTypeB().getCode());
+		insert(service, node2);
+
+		final ObjectNode node1 = objectMapper.createObjectNode();
+		node1.put("path","/b2");
+		node1.put("string", "bye");
+		node1.put("template", transformation.getEntityTypeB().getCode());
+		insert(service, node1);
+
+		
+		final ObjectNode node = objectMapper.createObjectNode();
+		node.put("path","/b3");
+		node.put("string", "welcome");
+		node.put("template", transformation.getEntityTypeB().getCode());
+		insert(service, node);
+		
+		SingleAttribute<String> attribute = (SingleAttribute<String>) transformation.getEntityTypeA().getAttribute("text");
+		
+		Query query = new Query(true, new ArrayList<AttributePredicate<?>>());
+		query.getPredicates().add(new AttributePredicate<String>(attribute, Operator.IN, new String[]{"welcome","bye"}));
+		FindByTypeService finder = entityTypeA.getService(FindByTypeService.class);
+		Result result = finder.getEntities(entityTypeA,query,null,null, new ListCallback<Node>() {
+
+			@Override
+			public Result process(List<Node> entities, long totalCount) {
+				Result result = new Result();
+				result.totalCount=totalCount;
+				
+				result.entities=new ObjectMapper().createArrayNode();
+				for (Node node:entities) {
+					 ObjectNode json = transformation.getAB().convert(node, new JacksonTransformationContext(entityTypeRepository));
+					 result.entities.add(json);
+				}
+				return result;
+			}
+		
+
+			
+		});
+		Assert.assertNotNull(result);
+		Assert.assertEquals(2,result.entities.size());
+		
+		
+		
+	}
+	
 	private String insert(
 			InsertionService service, final ObjectNode node) {
 		EntityType<Node> entityTypeA=transformation.getEntityTypeA();

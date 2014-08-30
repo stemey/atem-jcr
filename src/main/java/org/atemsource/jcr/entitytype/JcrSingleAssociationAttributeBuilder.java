@@ -3,6 +3,7 @@ package org.atemsource.jcr.entitytype;
 import javax.jcr.Node;
 
 import org.atemsource.atem.api.EntityTypeRepository;
+import org.atemsource.atem.api.attribute.Attribute;
 import org.atemsource.atem.api.attribute.annotation.Cardinality;
 import org.atemsource.atem.api.attribute.relation.SingleAttribute;
 import org.atemsource.atem.api.type.EntityType;
@@ -13,6 +14,34 @@ import org.atemsource.jcr.entitytype.converter.StringConverter;
 
 public class JcrSingleAssociationAttributeBuilder<T> implements
 		SingleAssociationAttributeBuilder<T> {
+
+	public String getCode() {
+		return code;
+	}
+
+	public AbstractEntityType<?> getEntityType() {
+		return entityType;
+	}
+
+	public Type<T> getTargetType() {
+		return targetType;
+	}
+
+	public boolean isComposition() {
+		return composition;
+	}
+
+	public Cardinality getCardinality() {
+		return cardinality;
+	}
+
+	public EntityTypeRepository getEntityTypeRepository() {
+		return entityTypeRepository;
+	}
+
+	public boolean isRequired() {
+		return required;
+	}
 
 	private String code;
 	private AbstractEntityType<?> entityType;
@@ -50,7 +79,7 @@ public class JcrSingleAssociationAttributeBuilder<T> implements
 	}
 
 	@Override
-	public SingleAttribute<T> create() {
+	public Attribute create() {
 		if (composition) {
 			SingleNodeAttribute singleNodeAttribute = new SingleNodeAttribute();
 			singleNodeAttribute.setRequired(required);
